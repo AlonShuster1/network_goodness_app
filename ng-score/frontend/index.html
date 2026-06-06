@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Goodness Score</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: ui-monospace, 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+            font-size: 14px;
+            background: #0d1117;
+            color: #c9d1d9;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── Header ─────────────────────────────────────────────────────── */
+        #header {
+            padding: 10px 18px;
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        #header h1 {
+            font-size: 16px;
+            color: #58a6ff;
+            margin-right: auto;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+        }
+
+        /* ── Buttons ─────────────────────────────────────────────────────── */
+        button {
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-family: inherit;
+            font-weight: 500;
+            border: 1px solid transparent;
+            transition: filter 0.15s, transform 0.1s;
+        }
+        button:hover  { filter: brightness(1.15); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+
+        #btn-save  { background: #1f6131; color: #3fb950; border-color: #2ea043; }
+        #btn-new   { background: #5a3e05; color: #e3b341; border-color: #9e6a03; }
+        #btn-undo  { background: #0d2a56; color: #79c0ff; border-color: #1f6feb; }
+        #btn-clear { background: #4a1212; color: #ff7b72; border-color: #b62324; }
+
+        /* ── Layout ──────────────────────────────────────────────────────── */
+        #content { flex: 1; display: flex; overflow: hidden; }
+        #map { flex: 1; }
+
+        #panel {
+            width: 330px;
+            flex-shrink: 0;
+            background: #161b22;
+            border-left: 1px solid #30363d;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 14px;
+            gap: 16px;
+        }
+
+        /* ── Panel sections ──────────────────────────────────────────────── */
+        .section-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #58a6ff;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+        }
+
+        #status {
+            font-size: 12px;
+            color: #8b949e;
+            font-style: italic;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        /* ── Metrics ─────────────────────────────────────────────────────── */
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            font-size: 13px;
+            padding: 3px 0;
+        }
+        .metric-label { color: #8b949e; }
+        .metric-value { color: #e6edf3; font-weight: 600; }
+        .metric-formula4 .metric-value { color: #3fb950; }
+
+        .metric-divider {
+            border: none;
+            border-top: 1px solid #21262d;
+            margin: 4px 0;
+        }
+
+        .warn {
+            font-size: 12px;
+            color: #d29922;
+            margin-top: 6px;
+            line-height: 1.4;
+        }
+
+        /* ── Leaderboard table ───────────────────────────────────────────── */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        th {
+            text-align: right;
+            color: #8b949e;
+            font-weight: normal;
+            padding: 4px 5px;
+            border-bottom: 1px solid #30363d;
+            white-space: nowrap;
+        }
+        th:first-child { text-align: left; }
+        td {
+            text-align: right;
+            padding: 4px 5px;
+            border-bottom: 1px solid #21262d;
+        }
+        td:first-child { text-align: left; }
+        tr.best-row td { color: #3fb950; }
+        tr:last-child td { border-bottom: none; }
+
+        .color-dot {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            margin-right: 5px;
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        .empty-note {
+            font-size: 12px;
+            color: #8b949e;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+<div id="header">
+    <h1>Network Goodness Score — Beer Sheva</h1>
+    <button id="btn-save">Save Snapshot</button>
+    <button id="btn-new">New Network</button>
+    <button id="btn-undo">Undo Node</button>
+    <button id="btn-clear">Clear Snapshots</button>
+</div>
+
+<div id="content">
+    <div id="map"></div>
+    <div id="panel">
+        <div id="section-current">
+            <div class="section-title">Current Network</div>
+            <div id="status">Click the map to add the first node.</div>
+            <div id="metrics"></div>
+        </div>
+        <div id="section-snapshots">
+            <div class="section-title">Saved Snapshots</div>
+            <div id="leaderboard"><span class="empty-note">No snapshots saved yet.</span></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = window.location.hostname === ''
+        ? 'http://localhost:8000'
+        : (window.location.port
+            ? `${window.location.protocol}//${window.location.hostname}:${window.location.port}`
+            : '');
+
+    const MAP_CENTER    = [31.24524, 34.78958];
+    const SNAPSHOT_COLORS = ['#3fb950', '#d29922', '#8957e5', '#58a6ff', '#5ccfe6', '#f85149'];
+    const EDIT_COLOR    = '#f85149';
+    const MIN_SAVE_KM   = 2.0;
+    const HOOD_COLORS   = ['#3fb950', '#d29922', '#8957e5', '#58a6ff'];
+
+    // ── State ──────────────────────────────────────────────────────────────
+    let editNodes    = [];
+    let editMarkers  = [];
+    let editPolyline = null;
+    let nodeCounter  = 0;
+
+    let savedSnapshots = [];
+    let snapshotLayers = [];
+
+    // ── Map setup ──────────────────────────────────────────────────────────
+    const map = L.map('map').setView(MAP_CENTER, 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+    }).addTo(map);
+
+    fetch(`${API_BASE}/neighborhoods`)
+        .then(r => r.json())
+        .then(data => {
+            data.neighborhoods.forEach((hood, i) => {
+                const c = HOOD_COLORS[i % HOOD_COLORS.length];
+                L.polygon(hood, { color: c, fillColor: c, fillOpacity: 0.12, weight: 1.5 }).addTo(map);
+            });
+        })
+        .catch(() => setStatus('Could not load neighborhoods from API.'));
+
+    // ── Node management ────────────────────────────────────────────────────
+    map.on('click', e => addNode(e.latlng.lat, e.latlng.lng));
+
+    function addNode(lat, lng) {
+        nodeCounter++;
+        const marker = L.circleMarker([lat, lng], {
+            radius: 5, color: '#fff', fillColor: EDIT_COLOR, fillOpacity: 1, weight: 2
+        }).addTo(map).bindTooltip(`Node ${nodeCounter}`);
+
+        editMarkers.push(marker);
+        editNodes.push([lat, lng]);
+        refreshPolyline();
+        setStatus(`Node ${nodeCounter} at (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
+        fetchAndRender();
+    }
+
+    // Snapshot's line is drawn with a frozen copy of coords at save-time.
+    // After saving we immediately wipe the edit state so the next click on
+    // the map always starts a brand-new, unconnected route.
+    function clearEditState() {
+        editMarkers.forEach(m => map.removeLayer(m));
+        editMarkers  = [];
+        editNodes    = [];
+        nodeCounter  = 0;
+        refreshPolyline();   // removes the red edit line
+        renderMetrics(null);
+    }
+
+    function refreshPolyline() {
+        if (editPolyline) { map.removeLayer(editPolyline); editPolyline = null; }
+        if (editNodes.length >= 2) {
+            editPolyline = L.polyline(editNodes.map(n => [...n]), {
+                color: EDIT_COLOR, weight: 4, opacity: 0.9
+            }).addTo(map);
+        }
+    }
+
+    // ── API ────────────────────────────────────────────────────────────────
+    async function fetchAndRender() {
+        if (editNodes.length < 2) { renderMetrics(null); return; }
+        try {
+            const res = await fetch(`${API_BASE}/calculate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nodes: editNodes })
+            });
+            renderMetrics(await res.json());
+        } catch {
+            setStatus('Error: could not reach API at ' + API_BASE);
+        }
+    }
+
+    // ── Render ─────────────────────────────────────────────────────────────
+    function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+    function fmt(n, dec) { return typeof n === 'number' ? n.toFixed(dec) : '—'; }
+
+    function renderMetrics(data) {
+        const el = document.getElementById('metrics');
+        if (!data || data.K === 0) {
+            if (editNodes.length >= 2) {
+                el.innerHTML =
+                    `<div class="metric"><span class="metric-label">L (length)</span>` +
+                    `<span class="metric-value">${fmt(data && data.L, 3)} km</span></div>` +
+                    `<div class="warn">No neighborhoods within ${0.8} km gravitating radius.</div>`;
+            } else {
+                el.innerHTML = '';
+            }
+            return;
+        }
+
+        const rows = [
+            { label: 'L (length)',           val: `${fmt(data.L, 3)} km`,         cls: '' },
+            { label: 'K (gravitating zones)',val: data.K,                          cls: '' },
+            { label: 'Network inertia',      val: fmt(data.network_inertia, 4),   cls: '' },
+            null,
+            { label: 'Formula 3 (article)', val: `${fmt(data.formula3, 2)}%`,     cls: '' },
+            { label: 'Formula 4 (proposed)',val: `${fmt(data.formula4, 2)}%`,     cls: 'metric-formula4' },
+            { label: 'Formula 5 (proposed)',val: `${fmt(data.formula5, 2)}%`,     cls: '' },
+            { label: 'Formula 6 (proposed)',val: `${fmt(data.formula6, 2)}%`,     cls: '' },
+        ];
+
+        let html = rows.map(r =>
+            r === null
+                ? '<hr class="metric-divider">'
+                : `<div class="metric ${r.cls}"><span class="metric-label">${r.label}</span><span class="metric-value">${r.val}</span></div>`
+        ).join('');
+
+        if (data.L < MIN_SAVE_KM) {
+            html += `<div class="warn">Draw ${(MIN_SAVE_KM - data.L).toFixed(2)} km more before saving.</div>`;
+        }
+
+        el.innerHTML = html;
+    }
+
+    function renderLeaderboard() {
+        const el = document.getElementById('leaderboard');
+        if (savedSnapshots.length === 0) {
+            el.innerHTML = '<span class="empty-note">No snapshots saved yet.</span>';
+            return;
+        }
+
+        const best = Math.max(...savedSnapshots.map(s => s.score));
+        let html = `<table><thead><tr>
+            <th>#</th><th>Score</th><th>L km</th><th>K</th><th>Nodes</th>
+        </tr></thead><tbody>`;
+
+        for (const s of savedSnapshots) {
+            const isBest = s.score === best;
+            html += `<tr class="${isBest ? 'best-row' : ''}">
+                <td><span class="color-dot" style="background:${s.color}"></span>${s.version}</td>
+                <td>${s.score.toFixed(2)}%${isBest ? ' ★' : ''}</td>
+                <td>${s.L.toFixed(2)}</td>
+                <td>${s.K}</td>
+                <td>${s.nodeCount}</td>
+            </tr>`;
+        }
+
+        el.innerHTML = html + '</tbody></table>';
+    }
+
+    // ── Buttons ────────────────────────────────────────────────────────────
+    document.getElementById('btn-save').addEventListener('click', async () => {
+        if (editNodes.length < 2) { setStatus('Add at least 2 nodes before saving.'); return; }
+
+        let data;
+        try {
+            // Snapshot the nodes NOW before any async gap can mutate editNodes.
+            const frozenNodes = editNodes.map(n => [...n]);
+            const res = await fetch(`${API_BASE}/calculate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nodes: frozenNodes })
+            });
+            data = await res.json();
+
+            if (data.L < MIN_SAVE_KM) {
+                setStatus(`Need ${(MIN_SAVE_KM - data.L).toFixed(2)} km more to save.`);
+                return;
+            }
+
+            const version = savedSnapshots.length + 1;
+            const color   = SNAPSHOT_COLORS[(version - 1) % SNAPSHOT_COLORS.length];
+
+            // Freeze snapshot polyline from the captured coords (not the live array).
+            const line = L.polyline(frozenNodes, { color, weight: 3, opacity: 0.7 }).addTo(map);
+            snapshotLayers.push(line);
+
+            savedSnapshots.push({ version, score: data.formula4, L: data.L, K: data.K, nodeCount: frozenNodes.length, color });
+            renderLeaderboard();
+
+            // Clear edit state so the next map click starts a fresh, unconnected network.
+            clearEditState();
+            setStatus(`Snapshot #${version} saved. Click the map to start a new network.`);
+        } catch {
+            setStatus('Error: could not reach API.');
+        }
+    });
+
+    document.getElementById('btn-new').addEventListener('click', () => {
+        clearEditState();
+        setStatus('New network started. Click the map to add the first node.');
+    });
+
+    document.getElementById('btn-undo').addEventListener('click', () => {
+        if (editNodes.length === 0) { setStatus('Nothing to undo.'); return; }
+        map.removeLayer(editMarkers.pop());
+        editNodes.pop();
+        nodeCounter--;
+        refreshPolyline();
+        if (editNodes.length >= 2) {
+            fetchAndRender();
+        } else {
+            renderMetrics(null);
+            setStatus(editNodes.length === 1 ? '1 node — add another to compute scores.' : 'Click the map to add the first node.');
+        }
+    });
+
+    document.getElementById('btn-clear').addEventListener('click', () => {
+        snapshotLayers.forEach(l => map.removeLayer(l));
+        snapshotLayers  = [];
+        savedSnapshots  = [];
+        renderLeaderboard();
+        setStatus('All snapshots cleared.');
+    });
+</script>
+</body>
+</html>
